@@ -1,0 +1,69 @@
+{{ if .Values.integration.settings.dependencies.dashboard }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.integration.apps.dashboard.name}}
+  namespace : {{ .Release.Namespace }}
+  labels:
+    {{- include "dashboard.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      deployment: {{ template "dashboard.resource.prefix" . }}
+  template:
+    metadata:
+      {{- with .Values.integration.apps.dashboard.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        deployment: {{ template "dashboard.resource.prefix" . }}
+    spec:
+      containers:
+        - name: {{ .Values.integration.apps.dashboard.name}}
+          image: "{{ .Values.integration.apps.dashboard.image.repository }}:{{ .Values.integration.apps.dashboard.image.tag }}"
+          imagePullPolicy: {{ .Values.integration.apps.dashboard.image.pullPolicy }}
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - '-c'
+                - '-e'
+                - nc -z localhost 9743
+            initialDelaySeconds: 5
+            timeoutSeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 6
+          terminationMessagePath: /dev/termination-log
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - '-c'
+                - nc -z localhost 9743
+            initialDelaySeconds: 30
+            timeoutSeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 6
+          ports:
+            - containerPort: 9743
+              protocol: "TCP"    
+          volumeMounts:
+            - name: wso2mi-dashboard-toml
+              mountPath: /home/wso2carbon/wso2mi-dashboard-{{ .Values.appVersion }}/conf/deployment.toml
+              subPath: deployment.toml
+      {{ if .Values.integration.settings.serviceAccount.enabled }}
+      serviceAccountName: {{ .Values.integration.settings.serviceAccount.name }}
+      {{ end }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecrets }}
+      securityContext:
+        {{- toYaml .Values.integration.apps.wso2mi.podSecurityContext | nindent 8 }}
+      volumes:
+        - name: wso2mi-dashboard-toml
+          configMap:
+            name: {{ template "wso2apim.resource.prefix" . }}-dashboard-conf
+{{ end }}

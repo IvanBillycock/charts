@@ -1,0 +1,12 @@
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: planeta-front-root
+spec:
+  host: {{ .Values.environment.ISSUER }}
+  to:
+    kind: Service
+    name: front-planeta
+    weight: 100
+  port:
+    targetPort: 80-tcp

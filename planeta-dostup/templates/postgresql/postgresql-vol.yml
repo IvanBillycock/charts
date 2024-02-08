@@ -1,0 +1,13 @@
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: planeta-postgresql-data-volume-0
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: nfs-client
+  volumeMode: Filesystem

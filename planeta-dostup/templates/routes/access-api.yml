@@ -1,0 +1,12 @@
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: planeta-access-api
+spec:
+  host: {{ .Values.environment.ISSUER }}
+  path: /access_api/
+  to:
+    kind: Service
+    name: planeta-gateway-service
+  port:
+    targetPort: 8080-tcp

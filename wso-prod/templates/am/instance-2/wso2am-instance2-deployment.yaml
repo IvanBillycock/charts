@@ -1,0 +1,127 @@
+{{ if .Values.integration.settings.dependencies.apim }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "wso2apim.fullname" . }}-instance2
+  labels:
+    {{- include "wso2apim.labels" . | nindent 4 }}
+spec:  
+  {{- if not .Values.integration.apps.wso2apim.autoscaling.enabled }}
+  replicas: {{ .Values.integration.apps.wso2apim.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      deployment: {{ template "wso2apim.resource.prefix" . }}
+      node: {{ template "wso2apim.resource.prefix" . }}-instance2
+  template:
+    metadata:
+      {{- with .Values.integration.apps.wso2apim.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        deployment: {{ template "wso2apim.resource.prefix" . }}
+        node: {{ template "wso2apim.resource.prefix" . }}-instance2
+    spec:
+      {{ if .Values.integration.settings.dependencies.postgresql }}
+      initContainers:
+      - name: init-postgresql
+        image: busybox:1.32
+        command: ['sh', '-c', 'echo -e "Checking for the availability of PostgreSQL Server deployment"; while ! nc -z "{{ .Values.integration.apps.postgresql.serviceName }}" 5432; do sleep 1; printf "-"; done; echo -e "  >> PostgreSQL Server has started";']
+      - name: init-postgresql-connector-download
+        image: busybox:1.32
+        command:
+          - /bin/sh
+          - "-c"
+          - |
+            set -e
+            connector_version=42.2.9
+            wget https://repo1.maven.org/maven2/org/postgresql/postgresql/${connector_version}/postgresql-${connector_version}.jar -P /postgresql-connector-jar/
+        volumeMounts:
+          - name: postgresql-connector-jar
+            mountPath: /postgresql-connector-jar
+      - name: sleep
+        image: busybox:1.32
+        command: ['sh', '-c', 'sleep 20;']   
+      {{ end }}   
+      containers:
+        - name: {{ .Values.integration.apps.wso2apim.name }}
+          image: "{{ .Values.integration.apps.wso2apim.image.repository }}:{{ .Values.integration.apps.wso2apim.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.integration.apps.wso2apim.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.integration.apps.wso2apim.podSecurityContext | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /services/Version
+              port: 9763
+            initialDelaySeconds: {{ .Values.integration.apps.wso2apim.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.integration.apps.wso2apim.livenessProbe.periodSeconds }}
+          readinessProbe:
+            httpGet:
+              path: /services/Version
+              port: 9763
+            initialDelaySeconds: {{ .Values.integration.apps.wso2apim.readinessProbe.initialDelaySeconds}}
+            periodSeconds: {{ .Values.integration.apps.wso2apim.readinessProbe.periodSeconds }}
+          lifecycle:
+            preStop:
+              exec:
+                command:  ['sh', '-c', '${WSO2_SERVER_HOME}/bin/api-manager.sh stop']
+          ports:
+            - containerPort: 11111
+              protocol: TCP
+            - containerPort: 5672
+              protocol: TCP
+            - containerPort: 8243
+              protocol: TCP
+            - containerPort: 8280
+              protocol: TCP
+            - containerPort: 9099
+              protocol: TCP
+            - containerPort: 9443
+              protocol: TCP
+            - containerPort: 9611
+              protocol: TCP
+            - containerPort: 9711
+              protocol: TCP
+            - containerPort: 9763
+              protocol: TCP
+            - containerPort: 9999
+              protocol: TCP
+          env:
+            - name: JVM_MEM_OPTS
+              value: "-Xms{{ .Values.integration.apps.wso2apim.resources.jvm.heap.memory.xms }} -Xmx{{ .Values.integration.apps.wso2apim.resources.jvm.heap.memory.xmx }}"
+          volumeMounts:
+            - name: wso2apim-deployment-toml
+              mountPath: /home/wso2carbon/wso2-config-volume/repository/conf
+            {{ if .Values.integration.settings.dependencies.postgresql }}
+            - name: postgresql-connector-jar
+              mountPath: /home/wso2carbon/wso2-artifact-volume/repository/components/dropins
+            {{ end }}
+          resources:
+            requests:
+              memory: {{ .Values.integration.apps.wso2apim.resources.requests.memory }}
+              cpu: {{ .Values.integration.apps.wso2apim.resources.requests.cpu }}
+      volumes:
+        - name: wso2apim-deployment-toml
+          configMap:
+            name: {{ template "wso2apim.resource.prefix" . }}-instance2-conf
+        {{ if .Values.integration.settings.dependencies.postgresql }}
+        - name: postgresql-connector-jar
+          emptyDir: {}
+        {{ end }}
+      {{- with .Values.integration.apps.wso2apim.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{ if .Values.integration.settings.serviceAccount.enabled }}
+      serviceAccountName: {{ .Values.integration.settings.serviceAccount.name }}
+      {{ end }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecrets }}
+      securityContext:
+        {{- toYaml .Values.integration.apps.wso2apim.securityContext | nindent 8 }}
+      {{- with .Values.integration.apps.wso2apim.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{ end }}

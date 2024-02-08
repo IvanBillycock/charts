@@ -1,0 +1,90 @@
+{{ if .Values.integration.settings.dependencies.postgresql }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.integration.apps.postgresql.name }}
+  namespace : {{ .Release.Namespace }}
+  labels:
+    {{- include "postgresql.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      deployment: {{ template "postgresql.resource.prefix" . }}
+  template:
+    metadata:
+      {{- with .Values.integration.apps.postgresql.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        deployment: {{ template "postgresql.resource.prefix" . }}
+    spec:
+      containers:
+        - name: {{ .Values.integration.apps.postgresql.name }}
+          image: "{{ .Values.integration.apps.postgresql.image.repository }}:{{ .Values.integration.apps.postgresql.image.tag }}"
+          imagePullPolicy: {{ .Values.integration.apps.postgresql.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.integration.apps.postgresql.podSecurityContext | nindent 12 }}
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - '-c'
+                - '-e'
+                - |
+                  exec pg_isready -U "postgres" -h 127.0.0.1 -p 5432
+            initialDelaySeconds: 5
+            timeoutSeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 6
+          terminationMessagePath: /dev/termination-log
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - '-c'
+                - exec pg_isready -U "postgres" -h 127.0.0.1 -p 5432
+            initialDelaySeconds: 30
+            timeoutSeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 6
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.integration.apps.postgresql.name }}-secrets
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.integration.apps.postgresql.name }}-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.integration.apps.postgresql.name }}-secrets
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: postgresql-init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+            - name: postgresql-data
+              mountPath: /var/lib/postgresql
+      volumes:
+        - name: postgresql-init-scripts
+          configMap:
+            name: {{ template "postgresql.resource.prefix" . }}-conf
+            defaultMode: 420
+        - name: postgresql-data
+          persistentVolumeClaim:
+            claimName: {{ template "postgresql.resource.prefix" . }}-data-volume
+      {{ if .Values.integration.settings.serviceAccount.enabled }}
+      serviceAccountName: {{ .Values.integration.settings.serviceAccount.name }}
+      {{ end }}
+      securityContext:
+        {{- toYaml .Values.integration.apps.postgresql.podSecurityContext | nindent 8 }}
+{{ end }}

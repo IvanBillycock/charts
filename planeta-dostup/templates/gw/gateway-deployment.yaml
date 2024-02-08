@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: planeta-gateway-service
+  labels:
+    app: planeta-gateway-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      deployment: planeta-gateway-service
+  template:
+    metadata:
+      labels:
+        deployment: planeta-gateway-service
+    spec:
+      containers:
+        - name: planeta-gateway-service
+          image: {{ .Values.environment.images.gateway }}
+          imagePullPolicy: Always
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 3
+          securityContext:
+            runAsUser: 0
+            capabilities:
+              drop:
+                - MKNOD
+          ports:
+            - containerPort: 8080
+          env:
+            - name: API_GATEWAY_PORT
+              value: '8080'
+            - name: AUTH_PATH
+              value: auth_api
+            - name: BASE_URL
+              value: /
+            - name: CONTENT_PATH
+              value: content_api
+            - name: CUSTOM_SERVICE_PATH
+              value: custom_api
+            - name: IO_THREADS
+              value: '128'
+            - name: MAX_TOTAL_CONNECTIONS
+              value: '15000'
+            - name: TOMCAT_MAX_THREADS
+              value: '2048'
+            - name: TOMCAT_MIN_THREADS
+              value: '1024'
+            - name: WORKER_THREADS
+              value: '512'
+            - name: ZUUL_CONNECTIONS_PER_ROUTE
+              value: '15000'
+            - name: PLANETA_ACCESS_BASE_URL
+              value: 'http://{{ .Values.environment.ISSUER }}/access'
+            - name: CONFIG_SERVICE_HOST
+              value: planeta-gateway-service
+            - name: PLANETA_JWT_SECRET
+              value: vn1783
+            - name: EUREKA_URLS
+              value: http://planeta-discovery-service/eureka
+            - name: PLANETA_LOGGING_LEVEL
+              value: DEBUG
+            - name: ROOT_LOGGING_LEVEL
+              value: DEBUG
+            - name: SPRING_LOGGING_LEVEL
+              value: DEBUG
+            - name: SQL_LOGGING_LEVEL
+              value: DEBUG
+            - name: CONFIG_SERVICE_PORT
+              value: '8080'
+            - name: CONTENT_REQUESTS_PER_SECOND
+              value: '5000'
+            - name: EUREKA_PREFER_IP_ADDRESS
+              value: 'true'
+            - name: PLANETA_JWT_SECRET
+              value: vn1783
+            - name: SESSION_TIMEOUT
+              value: 60m
+            - name: logging.level.org.springframework.cloud.gateway
+              value: TRACE
+      serviceAccountName: planeta-dostup
+      imagePullSecrets:
+        - name: {{ .Values.environment.imagePullSecrets }}

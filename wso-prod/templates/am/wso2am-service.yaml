@@ -1,0 +1,51 @@
+{{ if .Values.integration.settings.dependencies.apim }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "wso2apim.fullname" . }}-service
+  namespace : {{ .Release.Namespace }}
+  labels:
+    {{- include "wso2apim.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.integration.apps.wso2apim.services.main.type }}
+  selector:
+    deployment: {{ template "wso2apim.resource.prefix" . }}
+  ports:
+    # ports that this service should serve on
+    - name: port-11111
+      protocol: TCP
+      port: 11111
+    - name: jms-tcp
+      protocol: TCP
+      port: 5672
+    - name: pass-through-https
+      protocol: TCP
+      port: 8243
+    - name: pass-through-http
+      protocol: TCP
+      port: 8280
+    - name: port-9099
+      protocol: TCP
+      port: 9099
+    - name: servlet-https
+      protocol: TCP
+      port: 9443
+    - name: binary
+      protocol: TCP
+      port: 9611
+    - name: binary-secure
+      protocol: TCP
+      port: 9711
+    - name: port-9763
+      protocol: TCP
+      port: 9763
+    - name: websub-http
+      protocol: TCP
+      port: 9021
+    - name: websub-https
+      protocol: TCP
+      port: 8021
+    - name: port-9999
+      protocol: TCP
+      port: 9999
+{{ end }}

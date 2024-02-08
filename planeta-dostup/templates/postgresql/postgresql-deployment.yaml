@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: planeta-postgresql
+  labels:
+    app: planeta-postgresql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      deployment: planeta-postgresql
+  template:
+    metadata:
+      labels:
+        deployment: planeta-postgresql
+    spec:
+      containers:
+        - name: planeta-postgresql
+          image: {{ .Values.environment.images.postgresql }}
+          imagePullPolicy: Always
+          securityContext:
+            capabilities:
+              drop:
+                - MKNOD
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - '-c'
+                - '-e'
+                - |
+                  exec pg_isready -U "postgres" -h 127.0.0.1 -p 5432
+            initialDelaySeconds: 5
+            timeoutSeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - '-c'
+                - exec pg_isready -U "postgres" -h 127.0.0.1 -p 5432
+            initialDelaySeconds: 30
+            timeoutSeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 6
+          env:
+            - name: POSTGRES_PASSWORD
+              value: postgres
+            - name: POSTGRES_USER
+              value: postgres
+            - name: ACCESS_OAUTH_DB_HOST
+              value: planeta-postgresql
+            - name: ACCESS_OAUTH_DB_NAME
+              value: access
+            - name: ACCESS_OAUTH_DB_PASS
+              value: planeta
+            - name: ACCESS_OAUTH_DB_PORT
+              value: '5432'
+            - name: ACCESS_OAUTH_DB_USER
+              value: planeta
+          volumeMounts:
+            - name: postgresql-init-scripts
+              mountPath: /root
+            - name: planeta-init-vol
+              mountPath: /docker-entrypoint-initdb.d/init.sql
+              subPath: init.sql
+            - name: planeta-postgresql-data
+              mountPath: /var/lib/postgresql
+      volumes:
+        - name: planeta-init-vol
+          configMap:
+            name: planeta-init-db
+            defaultMode: 420
+        - name: postgresql-init-scripts
+          configMap:
+            name: planeta-postgresql-conf
+            defaultMode: 420
+        - name: planeta-postgresql-data
+          persistentVolumeClaim:
+            claimName: planeta-postgresql-data-volume-0
+      serviceAccountName: default
+      imagePullSecrets:
+        - name: {{ .Values.environment.imagePullSecrets }}

@@ -1,0 +1,18 @@
+{{ if .Values.integration.settings.dependencies.postgresql }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.integration.apps.postgresql.serviceName }}
+  namespace : {{ .Release.Namespace }}
+  labels:
+    {{- include "postgresql.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.integration.apps.postgresql.service.type }}
+  selector:
+    deployment: {{ template "postgresql.resource.prefix" . }}
+  ports:
+    # ports that this service should serve on
+    - name: postgresql-port
+      protocol: TCP
+      port: 5432
+{{ end }}

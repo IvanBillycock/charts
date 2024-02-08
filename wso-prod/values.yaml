@@ -1,0 +1,155 @@
+# Default values for integration.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+imagePullSecrets: gitlab-oco
+SuperAdminSecret: "admin"
+appVersion: 4.2.0
+
+integration:
+  settings: 
+    dependencies:
+      apim: true
+      postgresql: true
+      wso2mi: true
+      dashboard: true
+      monitoring:
+        enabled: true
+
+    serviceAccount:
+      enabled: true
+      name: wso2am-pattern-1-svc-account
+
+    ingress:
+      enabled: true
+      exposeApps:
+        wso2apim: true
+        postgresql: false
+        wso2mi: true
+        dashboard: true
+      
+  apps:  
+    wso2apim:
+      name: "wso2apim"
+
+      hostnames:
+        default: wso2am-oco-prod.apps.okd4.ibs.ru
+        gateway: gateway.wso2am-oco-prod.apps.okd4.ibs.ru
+        websub: websub.wso2am-oco-prod.apps.okd4.ibs.ru
+
+      proxy:
+        enabled: true
+        port: 443
+
+      replicaCount: 1
+
+      image:
+        repository: gitlabsup.ibs.ru:5050/oco/wso2am-image/wso2am
+        pullPolicy: Always
+        tag: "latest"
+
+      livenessProbe:
+        initialDelaySeconds: 180
+        periodSeconds: 10
+      readinessProbe:
+        initialDelaySeconds: 180
+        periodSeconds: 10
+
+      imagePullSecrets: []
+      nameOverride: ""
+      podAnnotations: {}
+      podSecurityContext: 
+        runAsUser: 802
+      securityContext:
+        runAsUser: 802
+
+      services:
+        main:
+          type: LoadBalancer
+        type: ClusterIP
+
+      resources:
+          requests:
+            memory: "2Gi"
+            cpu: "2000m"
+          limits:
+            memory: "3Gi"
+            cpu: "3000m"
+          jvm:
+            heap:
+              memory:
+                xms: "4096m"
+                xmx: "4096m"
+
+      autoscaling:
+        enabled: false
+        minReplicas: {}
+        maxReplicas: {}
+        targetCPUUtilizationPercentage: {}
+        targetMemoryUtilizationPercentage: {}
+
+      nodeSelector: {}
+
+    postgresql:
+      name: "postgresql"
+      serviceName: "postgresql-service"
+      service:
+        type: NodePort
+      image:
+        repository: postgres
+        pullPolicy: Always
+        tag: "14.2"
+      volume:
+        enabled: true
+        capacity: 20Gi
+        storageClassName: nfs-client
+      podAnnotations: {}
+      podSecurityContext: 
+        runAsUser: 1001
+      securityContext:
+        runAsUser: 1001
+    
+    wso2mi:
+      customDeployment: true
+      name: "wso2mi"
+      hostname: wso2mi-oco-prod.apps.okd4.ibs.ru
+      serviceName: "wso2mi-service"
+      replicas: 2
+      strategy:
+        rollingUpdate:
+          maxSurge: 1
+          maxUnavailable: 0
+      services:
+        main:
+          type: LoadBalancer
+        type: ClusterIP
+      image:
+        repository: gitlabsup.ibs.ru:5050/oco/wso2mi-extra-image
+        pullPolicy: Always
+        tag: "latest"
+      livenessProbe:
+        initialDelaySeconds: 35
+        periodSeconds: 10
+      readinessProbe:
+        initialDelaySeconds: 35
+        periodSeconds: 10
+      podAnnotations: {}
+      podSecurityContext: 
+        runAsUser: 802
+      securityContext:
+        runAsUser: 802
+    
+    dashboard:
+      name: "dashboard"
+      hostname:
+      serviceName: "dashboard-service"
+      service:
+        type: ClusterIP
+      image:
+        repository: gitlabsup.ibs.ru:5050/oco/wso2mi-dashboard-image/wso2mi-dashboard
+        pullPolicy: IfNotPresent
+        tag: "latest"
+      podAnnotations: {}
+      podSecurityContext: 
+        runAsUser: 802
+      securityContext:
+        runAsUser: 802

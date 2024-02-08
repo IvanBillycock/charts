@@ -1,0 +1,12 @@
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: palneta-swagger-ui
+spec:
+  host: {{ .Values.environment.ISSUER }}
+  path: /swagger-ui
+  to:
+    kind: Service
+    name: planeta-gateway-service
+  port:
+    targetPort: 8080-tcp

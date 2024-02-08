@@ -1,0 +1,382 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: planeta-postgresql-conf
+data:
+  access-oauth-init.sh: |-
+    #!/bin/bash
+    psql -v ON_ERROR_STOP=1 -U User DB -v"realm_id='ibs'" -v"realm_name='ibs'" -v"username='admin'" -v"password='admin'" -f ./create-realm.sql
+    psql -v ON_ERROR_STOP=1 -U User DB -v"realm_id='ibs'" -v"realm_name='ibs'" -v"username='admin'" -v"password='admin'" -f ./add-user.sql
+
+  create-realm.sql: |-
+    -- Вывод отладочной информации
+    --
+    SELECT '1.5.8' AS version;
+    SELECT 'release/release-1.5' AS branch;
+    --
+    --- при создании реалма необходимы данные как для самого реалма так и создание клиентов
+    -- далее идет скрипт по созданию реалма до 39 строки (!!!перед запуском прочитать 39 строку!!!)
+    --- необходимые данные для работы непосредственно доступа и функционирования реалма
+    INSERT INTO pd.realm (realm_id, enabled, name)
+    VALUES (:realm_id, true, :realm_name)
+    on conflict do nothing;
+
+    INSERT INTO pd.template_resource (name, realm_id, content)
+    VALUES (:realm_id || '-login', :realm_id,
+            (select tr.content from pd.template_resource tr where tr.name = 'master-login')),
+          (:realm_id || '-logout', :realm_id,
+            (select tr.content from pd.template_resource tr where tr.name = 'master-logout')),
+          (:realm_id || '-password', :realm_id,
+            (select tr.content from pd.template_resource tr where tr.name = 'master-password')),
+          (:realm_id || '-forgotPassword', :realm_id,
+              (select tr.content from pd.template_resource tr where tr.name = 'master-forgotPassword'))
+    on conflict do nothing;
+
+
+    INSERT INTO pd.scope(id, name, realm_id, description)
+    select gen_random_uuid(), s.name, :realm_id, s.name || ' scope'
+    from pd.scope s
+    where s.realm_id = 'master'
+      and not exists(select 1 from pd.scope where name in ('openid', 'resource') and realm_id = :realm_id);
+
+    -- @formatter:off
+    INSERT INTO pd.provider_realm (provider_id, realm_id, properties, enabled)
+    VALUES ('USERNAME_PASSWORD', :realm_id, '["java.util.HashMap", {}]', true),
+          ('SPNEGO_SERVICE', :realm_id, '["java.util.HashMap", {}]', false)
+    on conflict do nothing;
+    -- @formatter:on
+
+    ---- !!!!!!!!!!!!!!!!!!!!!!!!!!!
+    --- все запросы ниже необходимы для добавления списка клиентов
+    -- или можно воспользоваться скриптом add-new-client.sql если нужно добавить клиент по одиночке
+    -- количество клиентов и параметры client_id, client-secret, name определяются самим пользователем создающим пространство
+    -- нужные раскоментировать
+    -- @formatter:off
+    with clients(id, client_id, secret, realm_id, description) as (
+        SELECT *
+        from (
+            VALUES
+                (gen_random_uuid(), 'auth-client', '{noop}auth-secret', :realm_id, 'auth'),
+                (gen_random_uuid(), 'api-gateway-client', '{noop}api-gateway-secret', :realm_id, 'api-gateway'),
+                (gen_random_uuid(), 'admin-client', '{noop}admin-secret', :realm_id, 'admin-client'),
+                (gen_random_uuid(), 'content-service-client', '{noop}content-service-secret', :realm_id, 'content-service'),
+                (gen_random_uuid(), 'migration-service-client', '{noop}migration-service-secret', :realm_id, 'migration-service'),
+                (gen_random_uuid(), 'notify-service-client', '{noop}notify-service-secret', :realm_id, 'notify-service'),
+                (gen_random_uuid(), 'data-service-client', '{noop}data-service-secret', :realm_id, 'data-service'),
+                (gen_random_uuid(), 'cache-service-client', '{noop}cache-service-secret', :realm_id, 'cache-warm-service'),
+                (gen_random_uuid(), 'convert-service-client', '{noop}convert-service-secret', :realm_id, 'docs-converter-service'),
+                (gen_random_uuid(), 'jasper-service-client', '{noop}jasper-service-secret', :realm_id, 'jasper-service'),
+                (gen_random_uuid(), 'log-service-client', '{noop}log-service-secret', :realm_id, 'logging-service'),
+                (gen_random_uuid(), 'olap-service-client', '{noop}olap-service-secret', :realm_id, 'olap-service'),
+                (gen_random_uuid(), 'report-service-client', '{noop}report-service-secret', :realm_id, 'report-service'),
+                (gen_random_uuid(), 'screen-service-client', '{noop}screen-service-secret', :realm_id, 'screen-service'),
+                (gen_random_uuid(), 'podb-service-client', '{noop}podb-service-secret', :realm_id, 'podb-service'),
+                (gen_random_uuid(), 'nsi-service-client', '{noop}nsi-service-secret', :realm_id, 'nsi-service'),
+                (gen_random_uuid(), 'planeta-process-resource-client', '{noop}planeta-process-resource-secret', :realm_id, 'planeta-process-resource-client'),
+                (gen_random_uuid(), 'planeta-process-client', '{noop}planeta-process-secret', :realm_id, 'planeta-process-client'),
+                (gen_random_uuid(), 'design-service-client', '{noop}design-service-secret', :realm_id, 'design-service-client'),
+                (gen_random_uuid(), 'rolap-service-client', '{noop}rolap-service-secret', :realm_id, 'rolap-service'),
+                (gen_random_uuid(), 'constructor-service-client', '{noop}constructor-service-secret', :realm_id, 'constructor-service'),
+                (gen_random_uuid(), 'document-service-client', '{noop}document-service-secret', :realm_id, 'document-service')
+            ) as c(id, client_id, secret, realm_id, description)
+        where not exists(select 1 from pd.sys_object obj1 where obj1.realm_id = :realm_id and obj1.name = c.client_id)
+    ),
+    obj_ins as (
+        insert into pd.sys_object (id, type_id, name, realm_id, attributes)
+        select c.id, (select t.id from pd.sys_object_type t where t.code = 'CLIENT'),
+              c.client_id, :realm_id, '["java.util.HashMap", {}]'
+        from clients c
+    ),
+    clients_ins as (
+        insert into pd.client (id, secret, client_name, description)
+        SELECT c.id, c.secret, c.client_id, c.description FROM clients c
+    ),
+    scope_clients as (
+        INSERT INTO pd.scope_client(client_id, scope_id)
+            select c.id, sc.id
+            from clients c,
+                (select s.id from pd.scope s where s.realm_id = :realm_id) sc
+    ),
+    props(key) as (
+        select 'settings.client.require-proof-key'
+        union
+        select 'settings.client.require-authorization-consent'
+    ),
+    client_settings_ins as ( -- установка параметров клиента
+        insert into pd.client_settings (name, value, client_id)
+        select props.key, 'false', c.id
+        from clients c, props
+    ), -- установка параметров для токенов клиента
+    token_props(key, value) as (
+        select 'settings.token.reuse-refresh-tokens', 'false'
+        union
+        select 'settings.token.refresh-token-time-to-live', '["java.time.Duration",3600.000000000]'
+        union
+        select 'settings.token.access-token-time-to-live', '["java.time.Duration",300.000000000]'
+        union
+        select 'settings.token.id-token-signature-algorithm', '["org.springframework.security.oauth2.jose.jws.SignatureAlgorithm","RS256"]'
+    ),
+    token_settings_ins as (
+        insert into pd.client_token_settings (name, value, client_id)
+        select props.key, props.value, c.id
+                from clients c, token_props props
+    ), -- вставка методов аутентификации для клииентов
+    auth_method_props(key) as (
+        select 'client_secret_post'
+        union
+        select 'client_secret_basic'
+    ),
+    auth_method_ins as (
+        insert into pd.client_auth_method (client_id, auth_method)
+        select c.id, props.key from clients c, auth_method_props props
+    ), -- вставка типов грантов для клиентов
+    grant_type_props(key) as (
+        select 'refresh_token'
+        union
+        select 'client_credentials'
+        union
+        select 'authorization_code'
+    ),
+    grant_type_auth_ins as (
+        insert into pd.client_auth_grant_type (client_id, grant_type)
+        select c.id, props.key from clients c, grant_type_props props
+        where c.client_id like any (array ['%gateway%', '%auth-client%', 'admin-client'])
+    ),
+    grant_type_ins as (
+        insert into pd.client_auth_grant_type (client_id, grant_type)
+        select c.id, 'client_credentials'
+        from clients c
+        where c.client_id not like all (array ['%gateway%', '%auth-client%', 'admin-client'])
+    )
+    INSERT INTO pd.redirect_uri (client_id, value)
+    select c.id, '.*' from clients c;
+
+    insert into pd.user_storage (id, name, type, priority, realm_id, enabled)
+    select gen_random_uuid(), v.name, v.type, v.prior, :realm_id, v.enabled
+    from (values ('database', 'DB', 0, true),
+                ('ldap', 'LDAP', 1, false)) as v(name, type, prior, enabled)
+    where not exists(select 1 from pd.user_storage us where v.name = us.name
+                                                        and us.realm_id = :realm_id);
+
+    insert into pd.us_providers (provider_id, user_storage_id)
+    SELECT p.id, us.id
+    from pd.user_storage us, pd.provider p
+    where not exists(select 1 from pd.us_providers up where up.user_storage_id = us.id);
+
+    INSERT INTO pd.interface_theme (uuid, name, is_actual, src, realm_id)
+    select gen_random_uuid(), t.name, t.is_actual, src, :realm_id
+    from pd.interface_theme t
+    where t.realm_id = 'master' and t.is_actual is true
+      and not exists(select 1 from pd.interface_theme t1 where t1.realm_id = :realm_id)
+    ON CONFLICT DO NOTHING;
+    with anon as (
+        select gen_random_uuid() as id, '060312b6-5b17-4354-8023-f8918423cdfd'::uuid as type_id,
+              'anonymous' as name
+        where not exists(select 1 from pd.sys_object obj where obj.realm_id = :realm_id and obj.name = 'anonymous')
+    ), obj as (
+        insert into pd.sys_object (id, type_id, parent_id, name, realm_id, attributes)
+            select anon.id, anon.type_id, null, anon.name, :realm_id, '["java.util.HashMap", {}]'
+            from anon on conflict do nothing
+    )
+    insert into pd.sys_user (id, password, enabled, start_date, expire_date, expire_creds,
+                            locked, lang, failed_login_attempts, us_type, us_id)
+    select anon.id, '{noop}anonymous', true,
+          null, null,null, false, 'RU', 0, 'DB',
+          (select us.id from pd.user_storage us where us.type = 'DB' and us.realm_id = :realm_id)
+    from anon on conflict do nothing;
+
+
+    -- создание обязательных атрибутов
+    with realms as (select realm_id from pd.realm),
+        fields(field, description, locked, required, regexp) as (
+            select 'email', 'Электронная почта', true, true, '(?i)^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,6}$'
+            union
+            select 'firstname', 'Имя', true, true, null
+            union
+            select 'lastname', 'Фамилия', true, true, null
+            union
+            select 'middlename', 'Отчество', true, false, null
+            union
+            select 'note', 'Примечание', false, false, null
+            union
+            select 'organization', 'Организация', false, false, null
+        )
+    insert into pd.user_attribute_config (id, type_id, code, name, realm_id, enabled, required, regexp, locked)
+    select gen_random_uuid(), 'e9415838-6bd1-4ebc-9cf7-39f58b03dc92', f.field, f.description, r.realm_id, true, f.required, f.regexp, f.locked
+    from realms r, fields f on conflict (code, realm_id) do update set regexp = excluded.regexp,
+                                                                      required = excluded.required,
+                                                                      name = excluded.name,
+                                                                      locked = excluded.locked;
+
+    with
+        fields(field, description) as (
+            select 'email', 'Электронная почта'
+            union
+            select 'firstname', 'Имя'
+            union
+            select 'lastname', 'Фамилия'
+            union
+            select 'middlename', 'Отчество'
+            union
+            select 'note', 'Примечание'
+            union
+            select 'organization', 'Организация'
+        ),
+        field_configs as (
+            select uac.id, uac.code, uac.realm_id from pd.user_attribute_config uac
+                                                          join fields on fields.field = uac.code
+        ),
+        field_values as (
+            select f.id as config_id, su.id as user_id, f.code, 'anonymous' as lastname, 'anonymous' as firstname,
+                  'anonymous' as middlename, 'anonymous@admin.ru' as email, '' as note, '' as organization
+            from pd.sys_user su
+                    join pd.sys_object obj on su.id = obj.id
+                    join field_configs f on f.realm_id = obj.realm_id
+            where obj.realm_id = :realm_id and obj.name = 'anonymous'
+        ),
+        insert_lastname as (
+            insert into pd.user_attribute_value (config_id, user_id, value)
+                select fv.config_id, fv.user_id, fv.lastname
+                from field_values fv
+                where fv.code = 'lastname' and fv.lastname is not null
+                on conflict do nothing
+        ),
+        insert_firstname as (
+            insert into pd.user_attribute_value (config_id, user_id, value)
+                select fv.config_id, fv.user_id, fv.firstname
+                from field_values fv
+                where fv.code = 'firstname'
+                  and fv.firstname is not null
+                on conflict do nothing
+        ),
+        insert_middlename as (
+            insert into pd.user_attribute_value (config_id, user_id, value)
+                select fv.config_id, fv.user_id, fv.middlename
+                from field_values fv
+                where fv.code = 'middlename' and fv.middlename is not null
+                on conflict do nothing
+        ),
+        insert_note as (
+            insert into pd.user_attribute_value (config_id, user_id, value)
+                select fv.config_id, fv.user_id, fv.note
+                from field_values fv
+                where fv.code = 'note' and fv.note is not null
+                on conflict do nothing
+        ),
+        insert_email as (
+            insert into pd.user_attribute_value (config_id, user_id, value)
+                select fv.config_id, fv.user_id, fv.email
+                from field_values fv
+                where fv.code = 'email' and fv.email is not null
+                on conflict do nothing
+        )
+    insert into pd.user_attribute_value (config_id, user_id, value)
+    select fv.config_id, fv.user_id, fv.organization
+    from field_values fv
+    where fv.code = 'organization' and fv.organization is not null
+    on conflict do nothing;
+
+  add-user.sql: |-
+    --
+    -- Вывод отладочной информации
+    --
+    SELECT '1.5.0-SNAPSHOT' AS version;
+    SELECT 'dev' AS branch;
+    --
+    insert into pd.sys_object(id, type_id, parent_id, name, realm_id, attributes)
+    select gen_random_uuid(), '060312b6-5b17-4354-8023-f8918423cdfd', null, :username, :realm_id,
+            '["java.util.HashMap", {}]'
+    where not exists(select 1 from pd.sys_object o where o.name = :username and o.realm_id = :realm_id);
+
+
+    insert into pd.sys_user(id, password, us_type, us_id, enabled, locked, expire_creds)
+    VALUES ((select u.id from pd.sys_object u where u.realm_id = :realm_id and u.name = :username),
+            '{noop}' || :password, 'DB', (select us.id from pd.user_storage us where us.type = 'DB' and us.realm_id = :realm_id),
+            true, false, '2020-08-15 11:54:44.741469')
+    on conflict do nothing;
+
+    with
+        fields(field, description) as (
+            select 'email', 'Электронная почта'
+            union
+            select 'firstname', 'Имя'
+            union
+            select 'lastname', 'Фамилия'
+            union
+            select 'middlename', 'Отчество'
+            union
+            select 'note', 'Примечание'
+            union
+            select 'organization', 'Организация'
+        ),
+        field_configs as (
+            select uac.id, uac.code, uac.realm_id from pd.user_attribute_config uac
+                                                          join fields on fields.field = uac.code
+        ),
+        field_values as (
+            select f.id as config_id, su.id as user_id, f.code, 'admin' as lastname, 'admin' as firstname,
+                  'admin' as middlename, 'admin@admin.ru' as email, '' as note, '' as organization
+            from pd.sys_user su
+                    join pd.sys_object obj on su.id = obj.id
+                    join field_configs f on f.realm_id = obj.realm_id
+            where obj.realm_id = :realm_id and obj.name = 'admin'
+        ),
+        insert_lastname as (
+            insert into pd.user_attribute_value (config_id, user_id, value)
+                select fv.config_id, fv.user_id, fv.lastname
+                from field_values fv
+                where fv.code = 'lastname' and fv.lastname is not null
+                on conflict do nothing
+        ),
+        insert_firstname as (
+            insert into pd.user_attribute_value (config_id, user_id, value)
+                select fv.config_id, fv.user_id, fv.firstname
+                from field_values fv
+                where fv.code = 'firstname'
+                  and fv.firstname is not null
+                on conflict do nothing
+        ),
+        insert_middlename as (
+            insert into pd.user_attribute_value (config_id, user_id, value)
+                select fv.config_id, fv.user_id, fv.middlename
+                from field_values fv
+                where fv.code = 'middlename' and fv.middlename is not null
+                on conflict do nothing
+        ),
+        insert_note as (
+            insert into pd.user_attribute_value (config_id, user_id, value)
+                select fv.config_id, fv.user_id, fv.note
+                from field_values fv
+                where fv.code = 'note' and fv.note is not null
+                on conflict do nothing
+        ),
+        insert_email as (
+            insert into pd.user_attribute_value (config_id, user_id, value)
+                select fv.config_id, fv.user_id, fv.email
+                from field_values fv
+                where fv.code = 'email' and fv.email is not null
+                on conflict do nothing
+        )
+    insert into pd.user_attribute_value (config_id, user_id, value)
+    select fv.config_id, fv.user_id, fv.organization
+    from field_values fv
+    where fv.code = 'organization' and fv.organization is not null
+    on conflict do nothing;
+
+
+    insert into pd.sys_object_scope(object_id, scope_id)
+    VALUES ((select u.id from pd.sys_object u where u.realm_id = :realm_id and u.name = :username),
+            (select s.id from pd.scope s where s.realm_id = :realm_id and s.name = 'openid'))
+    on conflict do nothing;
+
+
+    -- по желанию если необходимо добавить сразу системных ролей пользователю создаваемому
+    -- скрипт ниже добавляет системную роль SYS_ADMIN
+    insert into pd.sys_object_role (object_id, role_id)
+    VALUES ((select u.id
+            from pd.sys_object u
+            where u.realm_id = :realm_id
+              and u.name = :username),
+            (select r.id from pd.role r where r.name = 'SYS_ADMIN'))
+    on conflict do nothing;
+

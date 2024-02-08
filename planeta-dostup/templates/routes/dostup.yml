@@ -1,0 +1,12 @@
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: planeta-dostup
+spec:
+  host: {{ .Values.environment.ISSUER }}
+  path: /access/
+  to:
+    kind: Service
+    name: planeta-dostup
+  port:
+    targetPort: http

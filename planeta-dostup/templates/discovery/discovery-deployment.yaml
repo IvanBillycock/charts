@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: planeta-discovery-service
+  labels:
+    app: planeta-discovery-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      deployment: planeta-discovery-service
+  template:
+    metadata:
+      labels:
+        deployment: planeta-discovery-service
+    spec:
+      containers:
+        - name: planeta-discovery-service
+          image: {{ .Values.environment.images.discovery }}
+          imagePullPolicy: Always
+          securityContext:
+            runAsUser: 0
+            capabilities:
+              drop:
+                - MKNOD
+          ports:
+            - containerPort: 8080
+          env:
+            - name: CONFIG_SERVICE_HOST
+              value: planeta-config-service
+            - name: EUREKA_REGISTER_WITH_EUREKA
+              value: 'false'
+            - name: PLANETA_JWT_SECRET
+              value: vn1783
+            - name: CONFIG_SERVICE_PORT
+              value: '8080'
+            - name: REGISTRY_SERVICE_HOST
+              value: planeta-config-service.cluster.svc
+            - name: REGISTRY_SERVICE_PORT
+              value: '8080'
+            - name: EUREKA_URLS
+              value: http://planeta-discovery-service/eureka
+            - name: CONFIG_SERVICE_HOST
+              value: planeta-config-service
+            - name: CONFIG_SERVICE_PORT
+              value: '8080'
+            - name: LOGSTASH_HOST
+              value: localhost
+            - name: LOGSTASH_PORT
+              value: '5001'
+            - name: PROJECT_STAND_NAME
+              value: planeta.svc.cluster.local
+            - name: DISCOVERY_SERVICE_PORT
+              value: '8080'
+            - name: EUREKA_PREFER_IP_ADDRESS
+              value: 'true'
+            - name: PROMETHEUS_ENABLED
+              value: 'true'
+            - name: HIBERNATE_GENERATE_STATS
+              value: 'true'
+            - name: MANAGEMENT_ENDPOINT_PROMETHEUS_ENABLED
+              value: 'true'
+            - name: MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED
+              value: 'true'
+            - name: SPRING_JPA_PROPERTIES_HIBERNATE_GENERATE_STATISTICS
+              value: 'true'
+            - name: ISSUER
+              value: 'http://{{ .Values.environment.ISSUER }}/access'
+      serviceAccountName: planeta-dostup
+      imagePullSecrets:
+        - name: {{ .Values.environment.imagePullSecrets }}

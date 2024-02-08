@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: front-planeta
+  labels:
+    app: front-planeta
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      deployment: front-planeta
+  template:
+    metadata:
+      labels:
+        deployment: front-planeta
+    spec:
+      containers:
+        - name: front-planeta
+          image: {{ .Values.environment.images.front }}
+          imagePullPolicy: Always
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 3
+          securityContext:
+            runAsUser: 0
+            capabilities:
+              drop:
+                - MKNOD
+          ports:
+            - containerPort: 80
+          env:
+            - name: CONFIG_SERVICE_HOST
+              value: planeta-config-service
+      serviceAccountName: planeta-dostup
+      imagePullSecrets:
+        - name: {{ .Values.environment.imagePullSecrets }}

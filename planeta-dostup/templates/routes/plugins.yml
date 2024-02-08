@@ -1,0 +1,12 @@
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: planeta-plugins
+spec:
+  host: {{ .Values.environment.ISSUER }}
+  path: /plugins/access/
+  to:
+    kind: Service
+    name: frontend-planeta
+  port:
+    targetPort: 80-tcp

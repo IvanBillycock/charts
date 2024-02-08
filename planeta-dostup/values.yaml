@@ -1,0 +1,73 @@
+environment:
+  images: 
+    config: harbor.nexus.planetanalytics.ru/planeta-analytics/planeta-config-service:dev
+    discovery: harbor.nexus.planetanalytics.ru/planeta-analytics/planeta-discovery-service:dev
+    front: harbor.nexus.planetanalytics.ru/planeta-analytics/front:release-2.4
+    frontend: harbor.nexus.planetanalytics.ru/access-docker-repository/release/release-1.5/frontend:latest
+    postgresql: harbor.nexus.planetanalytics.ru/library/postgres:10-alpine
+    gateway: harbor.nexus.planetanalytics.ru/planeta-analytics/planeta-gateway-service:dev
+    dostup: &dostup harbor.nexus.planetanalytics.ru/access-docker-repository/release/release-1.5/auth-service
+
+  imagePullSecrets: &imagePullSecrets harbor.nexus.planetanalytics.ru
+  ISSUER: &ISSUE planeta-dostup.apps.okd4.ibs.ru
+  ISSUERURL: &ISSUERURL http://planeta-dostup.apps.okd4.ibs.ru/access
+  discoveryURL: planeta-discovery.apps.okd4.ibs.ru
+
+
+replicaCount: 1
+image:
+  repository: *dostup
+  pullPolicy: Always
+  tag: "latest"
+imagePullSecrets:
+  - name: *imagePullSecrets
+serviceAccount:
+  create: true
+service:
+  type: ClusterIP
+  port: 9001
+volumes:
+  - name: auth-service-keytab
+volumeMounts:
+  - name: auth-service-keytab
+    mountPath: /opt/planeta-access
+
+env:
+  AUTH_CONTEXT_PATH: /access
+  AUTH_SERVER_PORT: '9001'
+  AUTH_SESSION_TIMEOUT: 24h
+  ISSUER: *ISSUERURL
+  JAVA_OPTS: -XshowSettings:vm -server -XX:+UseG1GC -Xms128m -Xmx640m -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=0.0.0.0:9005
+  JPA_SHOW_SQL: "false"
+  LOGSTASH_HOST: elk.planeta.ibs
+  LOGSTASH_PORT: '5001'
+  LOG_LVL_SECURITY: INFO
+  LOG_LVL_SERVER: ERROR
+  PACS_ENCRYPTOR_ALGORITHM: PBEWithHMACSHA512AndAES_256
+  PACS_ENCRYPTOR_KEY_OI: '1000'
+  PACS_ENCRYPTOR_PASSWORD: k6pe4bPw#$$
+  PACS_ENCRYPTOR_POOL_SIZE: '1'
+  PACS_SPNEGO_KEYTAB_LOCATION: /opt/planeta-access/keytabs
+  PACS_SPNEGO_KRB_CONF_LOCATION: /opt/planeta-access
+  PG_DB_HOST: 'planeta-postgresql'
+  PG_DB_NAME: 'access'
+  PG_DB_PASS: 'planeta'
+  PG_DB_PORT: 5432
+  PG_DB_USERNAME: planeta
+  PLANETA_LOGGING_LEVEL: ERROR
+  PROJECT_STAND_NAME: *ISSUE
+  PROMETHEUS_ENABLED: "false"
+  REDIS_HOST: planeta-dostup-redis-master
+  REDIS_PORT: '6379'
+  ROOT_LOGGING_LEVEL: ERROR
+  SESSION_COOKIE_SECURE: "false"
+  SPRING_LOGGING_LEVEL: ERROR
+  SPRING_PROFILES_ACTIVE: liquibase,logstash
+  SQL_LOGGING_LEVEL: ERROR
+  SWAGGER_BASE_PATH: /access_api
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80

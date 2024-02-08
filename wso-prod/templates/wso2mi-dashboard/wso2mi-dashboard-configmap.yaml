@@ -1,0 +1,23 @@
+{{ if .Values.integration.settings.dependencies.dashboard }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "wso2apim.resource.prefix" . }}-dashboard-conf
+  namespace : {{ .Release.Namespace }}
+data:
+  deployment.toml: |-
+    [server_config]
+    port = 9743
+
+    [heartbeat_config]
+    pool_size = 15
+
+    [mi_user_store]
+    username = "admin"
+    password = "{{ .Values.SuperAdminSecret }}"
+
+    [keystore]
+    file_name = "conf/security/dashboard.jks"
+    password = "wso2carbon"
+    key_password = "wso2carbon"
+{{ end }}
